@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Esquivar Chanclas</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Cargar imágenes y sonidos
+        const playerImg = new Image();
+        const flipFlopImg = new Image();
+        const backgroundImg = new Image();
+        const powerUpImg = new Image();
+        const bonusLevelBgImg = new Image();
+        const gameOverImg = new Image();
+        const motherImg = new Image();
+        const extremeBgImg = new Image();
+        const bonusAttackBgImg = new Image();
+        const projectileImg = new Image();
+        const bloodEffectImg = new Image();
+
+        const gameOverSound = new Audio('sounds/game_over.mp3');
+        const powerUpSound = new Audio('sounds/power_up.mp3');
+        const bonusLevelSound = new Audio('sounds/bonus_level.mp3');
+        const backgroundMusic = new Audio('sounds/background_music.mp3');
+        const attackSound = new Audio('sounds/attack_sound.mp3'); // New sound for attacking
+
+        playerImg.src = 'images/player.png';
+        flipFlopImg.src = 'images/flip_flop.png';
+        backgroundImg.src = 'images/background.png';
+        powerUpImg.src = 'images/power_up.png';
+        bonusLevelBgImg.src = 'images/bonus_level_background.png';
+        gameOverImg.src = 'images/game_over.png';
+        motherImg.src = 'images/mother.png';
+        extremeBgImg.src = 'images/extreme_background.png';
+        bonusAttackBgImg.src = 'images/bonus_attack_background.png';
+        projectileImg.src = 'images/projectile.png';
+        bloodEffectImg.src = 'images/blood_effect.png';
+
+        let player = { x: canvas.width / 2 - 16, y: canvas.height - 64, width: 32, height: 32 };
+        let chanclas = [];
+        let powerUps = [];
+        let projectiles = [];
+        let bloodEffects = [];
+        let keys = {};
+        let score = 0;
+        let lives = 3;
+        let level = 1;
+        let isBonusLevel = false;
+        let isExtremeLevel = false;
+        let controllingMother = false;
+        let isBonusAttackLevel = false;
+        let bloodLevel = 0; // 0: normal, 1: blood
+        let secretKeys = false;
+        let easterEggTriggered = false;
+
+        // Configuración de easter eggs
+        const easterEggs = [
+            { trigger: 50, message: "¡Has alcanzado 50 puntos!" },
+            { trigger: 100, message: "¡Has alcanzado 100 puntos!" },
+            { trigger: 200, message: "¡Increíble puntuación de 200 puntos!" }
+            // Agrega más easter eggs si lo deseas
+        ];
+
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === 'b' && !secretKeys) {
+                secretKeys = true;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+            if (e.key === 'Enter' && secretKeys) {
+                secretKeys = false;
+                if (!easterEggTriggered) {
+                    startBonusLevel();
+                }
+            }
+            if (e.key === 'm') {
+                toggleMotherMode();
+            }
+            if (e.key === 'a') {
+                if (isBonusAttackLevel) {
+                    shootProjectile();
+                }
+            }
+        });
+
+        function drawBackground() {
+            if (isExtremeLevel) {
+                ctx.drawImage(extremeBgImg, 0, 0, canvas.width, canvas.height);
+            } else if (isBonusAttackLevel) {
+                ctx.drawImage(bonusAttackBgImg, 0, 0, canvas.width, canvas.height);
+            } else if (isBonusLevel) {
+                ctx.drawImage(bonusLevelBgImg, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function drawPlayer() {
+            if (controllingMother) {
+                ctx.drawImage(motherImg, player.x, player.y, player.width, player.height);
+            } else {
+                ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+            }
+        }
+
+        function drawChanclas() {
+            chanclas.forEach(chancla => {
+                ctx.drawImage(flipFlopImg, chancla.x, chancla.y, chancla.width, chancla.height);
+            });
+        }
+
+        function drawPowerUps() {
+            powerUps.forEach(powerUp => {
+                ctx.drawImage(powerUpImg, powerUp.x, powerUp.y, powerUp.width, powerUp.height);
+            });
+        }
+
+        function drawProjectiles() {
+            projectiles.forEach(projectile => {
+                ctx.drawImage(projectileImg, projectile.x, projectile.y, projectile.width, projectile.height);
+            });
+        }
+
+        function drawBloodEffects() {
+            bloodEffects.forEach(effect => {
+                ctx.drawImage(bloodEffectImg, effect.x, effect.y, effect.width, effect.height);
+            });
+        }
+
+        function drawScore() {
+            ctx.font = '24px Arial';
+            ctx.fillStyle = '#fff';
+            ctx.fillText(`Puntuación: ${score}`, 10, 30);
+            ctx.fillText(`Vidas: ${lives}`, 10, 60);
+        }
+
+        function checkEasterEggs() {
+            easterEggs.forEach(easterEgg => {
+                if (score >= easterEgg.trigger) {
+                    ctx.font = '24px Arial';
+                    ctx.fillStyle = '#0f0';
+                    ctx.fillText(easterEgg.message, canvas.width / 2 - 150, canvas.height / 2);
+                    easterEggs.splice(easterEggs.indexOf(easterEgg), 1); // Remove the easter egg after triggering
+                }
+            });
+        }
+
+        function updateChanclas() {
+            chanclas.forEach(chancla => {
+                chancla.y += 5 * level;
+                if (chancla.y > canvas.height) {
+                    chancla.y = -30;
+                    chancla.x = Math.random() * (canvas.width - chancla.width);
+                    score++;
+                }
+            });
+            chanclas = chanclas.filter(chancla => chancla.y < canvas.height);
+        }
+
+        function updatePowerUps() {
+            powerUps.forEach(powerUp => {
+                powerUp.y += 5 * level;
+                if (powerUp.y > canvas.height) {
+                    powerUp.y = -30;
+                    powerUp.x = Math.random() * (canvas.width - powerUp.width);
+                }
+            });
+            powerUps = powerUps.filter(powerUp => powerUp.y < canvas.height);
+        }
+
+        function updateProjectiles() {
+            projectiles.forEach(projectile => {
+                projectile.y -= 10; // Move projectile upwards
+                if (projectile.y < 0) {
+                    projectiles = projectiles.filter(p => p !== projectile);
+                }
+            });
+        }
+
+        function updateBloodEffects() {
+            bloodEffects.forEach(effect => {
+                effect.y += 5; // Simulate falling blood
+                if (effect.y > canvas.height) {
+                    bloodEffects = bloodEffects.filter(e => e !== effect);
+                }
+            });
+        }
+
+        function checkCollision() {
+            chanclas.forEach(chancla => {
+                if (player.x < chancla.x + chancla.width &&
+                    player.x + player.width > chancla.x &&
+                    player.y < chancla.y + chancla.height &&
+                    player.y + player.height > chancla.y) {
+                    if (bloodLevel === 1) {
+                        bloodEffects.push({
+                            x: player.x + player.width / 2,
+                            y: player.y + player.height / 2,
+                            width: 32,
+                            height: 32
+                        });
+                    }
+                    lives--;
+                    if (lives <= 0) {
+                        endGame();
+                    } else {
+                        resetPlayerPosition();
+                    }
+                }
+            });
+
+            powerUps.forEach(powerUp =>
